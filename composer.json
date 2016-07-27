@@ -1,0 +1,20 @@
+{
+	"description": "Pure PHP MySQL dumping utility",
+	"homepage": "https://github.com/2createStudio/shuttle-export",
+	"license": "GNU",
+	"name" : "2createStudio/shuttle-export",
+	"authors": [
+		{
+			"name": "2createStudio",
+			"email": "office@2c-studio.com",
+			"homepage": " http://2create.bg",
+			"role": "Developer"
+		}
+	],
+	"require": {
+		"php": ">=5.0.7"
+	},
+	"autoload": {
+		"classmap": ["dumper.php"]
+	}
+}
