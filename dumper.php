@@ -1,7 +1,7 @@
-<?php 
+<?php
 /**
  * Abstract dump file: provides common interface for writing
- * data to dump files. 
+ * data to dump files.
  */
 abstract class Shuttle_Dump_File {
 	/**
@@ -34,11 +34,11 @@ abstract class Shuttle_Dump_File {
 
 	public static function is_gzip($filename) {
 		return preg_match('~gz$~i', $filename);
-	}	
+	}
 }
 
 /**
- * Plain text implementation. Uses standard file functions in PHP. 
+ * Plain text implementation. Uses standard file functions in PHP.
  */
 class Shuttle_Dump_File_Plaintext extends Shuttle_Dump_File {
 	function open() {
@@ -53,7 +53,7 @@ class Shuttle_Dump_File_Plaintext extends Shuttle_Dump_File {
 }
 
 /**
- * Gzip implementation. Uses gz* functions. 
+ * Gzip implementation. Uses gz* functions.
  */
 class Shuttle_Dump_File_Gzip extends Shuttle_Dump_File {
 	function open() {
@@ -68,7 +68,7 @@ class Shuttle_Dump_File_Gzip extends Shuttle_Dump_File {
 }
 
 /**
- * MySQL insert statement builder. 
+ * MySQL insert statement builder.
  */
 class Shuttle_Insert_Statement {
 	private $rows = array();
@@ -95,8 +95,8 @@ class Shuttle_Insert_Statement {
 			return false;
 		}
 
-		return 'INSERT INTO `' . $this->table . '` VALUES ' . 
-			implode(",\n", $this->rows) . '; ';
+		return 'INSERT INTO `' . $this->table . '` VALUES ' .
+		implode(",\n", $this->rows) . '; ';
 	}
 
 	function get_length() {
@@ -112,10 +112,20 @@ abstract class Shuttle_Dumper {
 	 * Maximum length of single insert statement
 	 */
 	const INSERT_THRESHOLD = 838860;
-	
+
+	/**
+	 * Using shell command
+	 */
+	const USING_SHELL = 1;
+
+	/**
+	 * Using native command (mysqli or mysql)
+	 */
+	const USING_NATIVE = 2;
+
 	/**
 	 * @var Shuttle_DBConn
-	 */	
+	 */
 	public $db;
 
 	/**
@@ -139,20 +149,30 @@ abstract class Shuttle_Dumper {
 	public $exclude_tables = array();
 
 	/**
-	 * Factory method for dumper on current hosts's configuration. 
+	 * Options passed by parameter in factory method
+	 */
+	protected $options;
+
+	/**
+	 * Factory method for dumper on current hosts's configuration.
+	 * @param Array $db_options
+	 * @return Shuttle_Dumper
 	 */
 	static function create($db_options) {
 		$db = Shuttle_DBConn::create($db_options);
 
 		$db->connect();
 
-		if (self::has_shell_access() 
-				&& self::is_shell_command_available('mysqldump')
-				&& self::is_shell_command_available('gzip')
-			) {
-			$dumper = new Shuttle_Dumper_ShellCommand($db);
+		$usingShell = (isset($db_options['using_command']) && $db_options['using_command'] == self::USING_SHELL) ? true : false;
+
+		if (self::has_shell_access()
+			&& self::is_shell_command_available('mysqldump')
+			&& self::is_shell_command_available('gzip')
+			&& $usingShell
+		) {
+			$dumper = new Shuttle_Dumper_ShellCommand($db, $db_options);
 		} else {
-			$dumper = new Shuttle_Dumper_Native($db);
+			$dumper = new Shuttle_Dumper_Native($db, $db_options);
 		}
 
 		if (isset($db_options['include_tables'])) {
@@ -165,8 +185,9 @@ abstract class Shuttle_Dumper {
 		return $dumper;
 	}
 
-	function __construct(Shuttle_DBConn $db) {
+	function __construct(Shuttle_DBConn $db, array $db_options = null) {
 		$this->db = $db;
+		$this->options = !empty($db_options) ? $db_options : null;
 	}
 
 	public static function has_shell_access() {
@@ -181,10 +202,10 @@ abstract class Shuttle_Dumper {
 		if (preg_match('~win~i', PHP_OS)) {
 			/*
 			On Windows, the `where` command checks for availabilty in PATH. According
-			to the manual(`where /?`), there is quiet mode: 
+			to the manual(`where /?`), there is quiet mode:
 			....
-			    /Q       Returns only the exit code, without displaying the list
-			             of matched files. (Quiet mode)
+				/Q       Returns only the exit code, without displaying the list
+						 of matched files. (Quiet mode)
 			....
 			*/
 			$output = array();
@@ -200,7 +221,7 @@ abstract class Shuttle_Dumper {
 			$last_line = exec('which ' . $command);
 			$last_line = trim($last_line);
 
-			// Whenever there is at least one line in the output, 
+			// Whenever there is at least one line in the output,
 			// it should be the path to the executable
 			if (empty($last_line)) {
 				return false;
@@ -208,7 +229,7 @@ abstract class Shuttle_Dumper {
 				return true;
 			}
 		}
-		
+
 	}
 
 	/**
@@ -241,10 +262,11 @@ abstract class Shuttle_Dumper {
 }
 
 class Shuttle_Dumper_ShellCommand extends Shuttle_Dumper {
+
 	function dump($export_file_location, $table_prefix='') {
 		$command = 'mysqldump -h ' . escapeshellarg($this->db->host) .
-			' -u ' . escapeshellarg($this->db->username) . 
-			' --password=' . escapeshellarg($this->db->password) . 
+			' -u ' . escapeshellarg($this->db->username) .
+			' --password=' . escapeshellarg($this->db->password) .
 			' ' . escapeshellarg($this->db->name);
 
 		$include_all_tables = empty($table_prefix) &&
@@ -276,18 +298,26 @@ class Shuttle_Dumper_ShellCommand extends Shuttle_Dumper {
 
 		unlink($error_file);
 	}
+
 }
 
 class Shuttle_Dumper_Native extends Shuttle_Dumper {
+
 	public function dump($export_file_location, $table_prefix='') {
 		$eol = $this->eol;
+
+		$exportNames = isset($this->options['set_names']) ? $this->options['set_names'] : 'utf8';
 
 		$this->dump_file = Shuttle_Dump_File::create($export_file_location);
 
 		$this->dump_file->write("-- Generation time: " . date('r') . $eol);
 		$this->dump_file->write("-- Host: " . $this->db->host . $eol);
 		$this->dump_file->write("-- DB name: " . $this->db->name . $eol);
-		$this->dump_file->write("/*!40030 SET NAMES UTF8 */;$eol$eol");
+		if(!empty($this->options['backup_comments'])){
+			$this->dump_file->write(sprintf("-- %s --", $this->options['backup_comments']) . $eol);
+		}
+		$this->dump_file->write("/*!40030 SET NAMES '{$exportNames}' */;$eol$eol");
+
 
 		$tables = $this->get_tables($table_prefix);
 		foreach ($tables as $table) {
@@ -300,7 +330,13 @@ class Shuttle_Dumper_Native extends Shuttle_Dumper {
 	protected function dump_table($table) {
 		$eol = $this->eol;
 
+		if(in_array($table, $this->options['disable_foreign_check_tables'])){
+			$this->dump_file->write("SET FOREIGN_KEY_CHECKS=0;$eol");
+		}
 		$this->dump_file->write("DROP TABLE IF EXISTS `$table`;$eol");
+		if(in_array($table, $this->options['disable_foreign_check_tables'])){
+			$this->dump_file->write("SET FOREIGN_KEY_CHECKS=1;$eol");
+		}
 
 		$create_table_sql = $this->get_create_table_sql($table);
 		$this->dump_file->write($create_table_sql . $eol . $eol);
@@ -330,7 +366,7 @@ class Shuttle_Dumper_Native extends Shuttle_Dumper {
 		}
 		$this->dump_file->write($eol . $eol);
 	}
-	
+
 	public function get_create_table_sql($table) {
 		$create_table_sql = $this->db->fetch('SHOW CREATE TABLE `' . $table . '`');
 		return $create_table_sql[0]['Create Table'] . ';';
@@ -444,11 +480,11 @@ class Shuttle_DBConn_Mysqli extends Shuttle_DBConn {
 			$this->connect();
 		}
 		$res = $this->connection->query($q);
-		
+
 		if (!$res) {
 			throw new Shuttle_Exception("SQL error: " . $this->connection->error);
 		}
-		
+
 		return $res;
 	}
 

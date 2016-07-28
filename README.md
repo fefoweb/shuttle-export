@@ -67,4 +67,10 @@ Dump all tables except for `city`:
         'exclude_tables' => array('city'),
     ));
     $world_dumper->dump('world-no-cities.sql.gz');
+    
+Other options added
+
+* using_command => can use this value: Shuttle_Dumper::USING_SHELL, or ::USING_NATIVE. This options is clear!
+* backup_comments => Is a text added in Shell Export like comment sql in file to save.
+* set_names => is a set name to configure the engine mysql for export in file(WITH SHELL). Default utf8.
 
