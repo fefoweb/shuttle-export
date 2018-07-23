@@ -330,11 +330,13 @@ class Shuttle_Dumper_Native extends Shuttle_Dumper {
 	protected function dump_table($table) {
 		$eol = $this->eol;
 
-		if(in_array($table, $this->options['disable_foreign_check_tables'])){
+		if(isset($this->options['disable_foreign_check_tables']) && 
+		   in_array($table, $this->options['disable_foreign_check_tables'])){
 			$this->dump_file->write("SET FOREIGN_KEY_CHECKS=0;$eol");
 		}
 		$this->dump_file->write("DROP TABLE IF EXISTS `$table`;$eol");
-		if(in_array($table, $this->options['disable_foreign_check_tables'])){
+		if(isset($this->options['disable_foreign_check_tables']) && 
+		   in_array($table, $this->options['disable_foreign_check_tables'])){
 			$this->dump_file->write("SET FOREIGN_KEY_CHECKS=1;$eol");
 		}
 

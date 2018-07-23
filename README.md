@@ -73,4 +73,5 @@ Other options added
 * using_command => can use this value: Shuttle_Dumper::USING_SHELL, or ::USING_NATIVE. This options is clear!
 * backup_comments => Is a text added in Shell Export like comment sql in file to save.
 * set_names => is a set name to configure the engine mysql for export in file(WITH SHELL). Default utf8.
+* disable_foreign_check_tables => array containing tables where the foreign check tables is disabled (usefull for DROP TABLE)
 
